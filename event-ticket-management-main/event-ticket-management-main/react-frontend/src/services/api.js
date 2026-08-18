@@ -27,6 +27,7 @@ export const uploadPosterImage = (formData) => api.post('/events/upload', formDa
 
 // Bookings
 export const createBooking = (data) => api.post('/bookings', data);
+export const confirmBooking = (id) => api.put(`/bookings/${id}/confirm`);
 export const cancelBooking = (id) => api.put(`/bookings/${id}/cancel`);
 export const getUserBookings = (userId) => api.get(`/bookings/user/${userId}`);
 export const getOrganizerBookings = (organizerId) => api.get(`/bookings/organizer/${organizerId}`);

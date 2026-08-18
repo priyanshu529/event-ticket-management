@@ -180,7 +180,7 @@ export default function Footer() {
             EVENTIFIED // 2026
           </div>
           <div className="text-right text-xs font-mono text-gray-500">
-            <div>ALL SHOWS & TICKETS • ZERO BOT SCALPING</div>
+            <div>ALL SHOWS & TICKETS • 100% VERIFIED ACCESS</div>
             <div>RAZORPAY SECURE SETTLEMENT ENGINE</div>
           </div>
         </div>

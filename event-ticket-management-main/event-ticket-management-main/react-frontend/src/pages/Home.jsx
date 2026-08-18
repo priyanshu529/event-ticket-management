@@ -65,18 +65,15 @@ export default function Home() {
 
         {/* Top Tagline */}
         <div className="relative z-10 max-w-7xl mx-auto w-full flex items-center justify-between pb-6">
-          <div className="flex items-center gap-3">
-            <span className="flex h-2.5 w-2.5 relative">
-              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-[#ccff00] opacity-75"></span>
-              <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-[#ccff00]"></span>
-            </span>
+          <div className="flex items-center gap-2.5">
+            <span className="h-2 w-2 rounded-full bg-[#ccff00]"></span>
             <span className="font-mono text-xs text-[#ccff00] tracking-widest uppercase">
               LIVE EVENT & TICKET PLATFORM // DISCOVER & HOST
             </span>
           </div>
 
           <div className="hidden sm:flex items-center gap-2 font-mono text-xs text-gray-300">
-            <span>INSTANT QR PASSES • ZERO BOT SCALPING</span>
+            <span>INSTANT QR PASSES • 100% VERIFIED ACCESS</span>
           </div>
         </div>
 
@@ -395,7 +392,7 @@ export default function Home() {
                 </p>
                 <ul className="space-y-2 font-mono text-xs text-gray-400 pt-2">
                   <li className="flex items-center gap-2">✓ Auto-located nearby recommendations</li>
-                  <li className="flex items-center gap-2">✓ Zero scalper bots & fair ticket pricing</li>
+                  <li className="flex items-center gap-2">✓ Transparent and fair ticket pricing</li>
                   <li className="flex items-center gap-2">✓ Dynamic cryptographically secure QR passes</li>
                 </ul>
               </div>

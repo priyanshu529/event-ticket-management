@@ -25,7 +25,7 @@ export default function AboutShowcase() {
     {
       num: "03",
       title: "CRYPTOGRAPHIC DIGITAL PASS",
-      desc: "Receive your encrypted digital pass immediately in your Pass Vault with dynamic QR codes that guarantee seamless, scalp-free door entry."
+      desc: "Receive your encrypted digital pass immediately in your Pass Vault with dynamic QR codes that guarantee seamless door entry."
     }
   ];
 
@@ -133,7 +133,7 @@ export default function AboutShowcase() {
           </div>
           <div className="p-4 bg-white/5 border border-white/10 flex flex-col items-center justify-center gap-1">
             <ShieldCheck size={18} className="text-[#ff4d00]" />
-            <span className="text-white font-bold">ANTI-SCALPING VERIFIED</span>
+            <span className="text-white font-bold">INSTANT PASS DELIVERY</span>
             <span className="text-[10px] text-gray-400">Cryptographic dynamic QR</span>
           </div>
           <div className="p-4 bg-white/5 border border-white/10 flex flex-col items-center justify-center gap-1">
@@ -278,7 +278,7 @@ export default function AboutShowcase() {
             <div className="pt-4 border-t border-white/10 grid grid-cols-2 gap-4 text-xs font-mono">
               <div className="p-3 bg-white/5 border border-white/10">
                 <div className="text-2xl font-bold font-syne text-[#ccff00]">0%</div>
-                <div className="text-gray-400 mt-1">SCALPING BOTS</div>
+                <div className="text-gray-400 mt-1">HIDDEN FEES</div>
               </div>
               <div className="p-3 bg-white/5 border border-white/10">
                 <div className="text-2xl font-bold font-syne text-white">100%</div>

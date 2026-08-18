@@ -115,7 +115,7 @@ export default function BookingList() {
             </div>
             <div className="p-3 bg-white/5 border border-white/15 flex items-center gap-2 text-xs font-mono text-gray-300">
               <ShieldCheck size={16} className="text-[#ccff00]" />
-              <span>ANTI-SCALPING SECURE WALLET</span>
+              <span>SECURE DIGITAL PASS VAULT</span>
             </div>
           </div>
         </div>
@@ -163,7 +163,13 @@ export default function BookingList() {
                       </div>
                       <span 
                         className={`text-xs font-mono font-bold px-2.5 py-1 uppercase ${
-                          isConfirmed ? 'bg-[#ccff00]/15 text-[#ccff00] border border-[#ccff00]/40' : 'bg-red-500/15 text-red-400 border border-red-500/40'
+                          booking.status === 'CONFIRMED' 
+                            ? 'bg-[#ccff00]/15 text-[#ccff00] border border-[#ccff00]/40' 
+                            : booking.status === 'PENDING_PAYMENT'
+                            ? 'bg-yellow-500/15 text-yellow-400 border border-yellow-500/40'
+                            : booking.status === 'EXPIRED'
+                            ? 'bg-gray-500/15 text-gray-400 border border-gray-500/40'
+                            : 'bg-red-500/15 text-red-400 border border-red-500/40'
                         }`}
                       >
                         {booking.status}

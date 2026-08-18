@@ -55,6 +55,7 @@ public class EventService {
         existing.setCity(dto.getCity());
         existing.setEventDate(dto.getEventDate());
         existing.setTotalSeats(dto.getTotalSeats());
+        existing.setAvailableSeats(dto.getAvailableSeats());
         existing.setPrice(dto.getPrice());
         existing.setCategory(dto.getCategory());
         existing.setImageUrl(dto.getImageUrl());
@@ -90,38 +91,31 @@ public class EventService {
             return toDto(findEventOrThrow(id));
         }
 
-        // Deducting seats (Booking)
+        // Deducting seats (Hold / Booking)
         if (seatsChange < 0) {
             int quantityToDeduct = -seatsChange;
 
-            // Lock event row exclusively for update
-            Event event = eventRepository.findByIdWithLock(id)
-                    .orElseThrow(() -> new ResourceNotFoundException("Event not found with id: " + id));
-
-            if (event.getAvailableSeats() == null || event.getAvailableSeats() <= 0) {
-                throw new IllegalArgumentException("SOLD_OUT: This event is completely sold out. No tickets remaining.");
+            int updated = eventRepository.deductSeatsAtomic(id, quantityToDeduct);
+            if (updated == 0) {
+                // Determine reason to give descriptive error
+                Event event = findEventOrThrow(id);
+                if (event.getAvailableSeats() == null || event.getAvailableSeats() <= 0) {
+                    throw new IllegalStateException("SOLD_OUT: This event is completely sold out. No tickets remaining.");
+                } else {
+                    throw new IllegalStateException("NOT_ENOUGH_SEATS: Only " + event.getAvailableSeats() 
+                            + " ticket(s) remaining. Cannot fulfill request for " + quantityToDeduct + " tickets.");
+                }
             }
 
-            if (event.getAvailableSeats() < quantityToDeduct) {
-                throw new IllegalArgumentException("NOT_ENOUGH_SEATS: Only " + event.getAvailableSeats() 
-                        + " ticket(s) remaining. Cannot fulfill request for " + quantityToDeduct + " tickets.");
-            }
-
-            event.setAvailableSeats(event.getAvailableSeats() - quantityToDeduct);
-            Event saved = eventRepository.save(event);
-            return toDto(saved);
+            return toDto(findEventOrThrow(id));
         } else {
-            // Restoring seats (Cancellation)
-            Event event = eventRepository.findByIdWithLock(id)
-                    .orElseThrow(() -> new ResourceNotFoundException("Event not found with id: " + id));
-
-            int newAvailable = (event.getAvailableSeats() != null ? event.getAvailableSeats() : 0) + seatsChange;
-            if (newAvailable > event.getTotalSeats()) {
+            // Restoring seats (Cancellation / Expiration of hold)
+            int updated = eventRepository.restoreSeatsAtomic(id, seatsChange);
+            if (updated == 0) {
                 throw new IllegalArgumentException("Cannot restore more seats than total seats capacity.");
             }
-            event.setAvailableSeats(newAvailable);
-            Event saved = eventRepository.save(event);
-            return toDto(saved);
+
+            return toDto(findEventOrThrow(id));
         }
     }
 

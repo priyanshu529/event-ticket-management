@@ -48,8 +48,8 @@ public class PaymentService {
         if (bookingId != null) {
             BookingDto booking = bookingServiceClient.getBookingById(bookingId);
 
-            if (booking.getStatus() == BookingStatus.CANCELLED) {
-                throw new IllegalArgumentException("Cannot pay for a cancelled booking.");
+            if (booking.getStatus() == BookingStatus.CANCELLED || booking.getStatus() == BookingStatus.EXPIRED) {
+                throw new IllegalArgumentException("Cannot pay for a " + booking.getStatus() + " booking.");
             }
             if (!booking.getUserId().equals(dto.getUserId())) {
                 throw new IllegalArgumentException("User does not own this booking.");
@@ -103,9 +103,7 @@ public class PaymentService {
 
     /**
      * Verifies the signature Razorpay Checkout returns on success and marks
-     * the matching payment COMPLETED. This is the step that was previously
-     * missing entirely - without it, a payment is never actually confirmed
-     * as genuine, since anyone could call the API and claim success.
+     * the matching payment COMPLETED. Then confirms the booking status in booking-service.
      */
     public PaymentResponseDto verifyPayment(VerifyPaymentRequestDto dto) {
         Payment payment = paymentRepository.findByRazorpayOrderId(dto.getRazorpayOrderId())
@@ -135,11 +133,24 @@ public class PaymentService {
         payment.setRazorpaySignature(dto.getRazorpaySignature());
         payment.setTransactionId(dto.getRazorpayPaymentId());
         payment.setPaymentDate(LocalDateTime.now());
-        if (dto.getBookingId() != null && payment.getBookingId() == null) {
-            payment.setBookingId(dto.getBookingId());
+        
+        Long targetBookingId = payment.getBookingId() != null ? payment.getBookingId() : dto.getBookingId();
+        if (targetBookingId != null) {
+            payment.setBookingId(targetBookingId);
         }
 
         Payment saved = paymentRepository.save(payment);
+
+        // Confirm the booking reservation in booking-service
+        if (targetBookingId != null) {
+            try {
+                bookingServiceClient.confirmBooking(targetBookingId);
+            } catch (Exception ex) {
+                // If booking confirmation failed (e.g. timeout/expired), throw or log
+                throw new IllegalStateException("Payment was successful but booking confirmation failed: " + ex.getMessage(), ex);
+            }
+        }
+
         return toResponseDto(saved);
     }
 

@@ -36,4 +36,14 @@ public interface EventRepository extends JpaRepository<Event, Long> {
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("SELECT e FROM Event e WHERE e.id = :id")
     Optional<Event> findByIdWithLock(@Param("id") Long id);
+
+    @org.springframework.data.jpa.repository.Modifying(clearAutomatically = true)
+    @Query("UPDATE Event e SET e.availableSeats = e.availableSeats - :seats " +
+           "WHERE e.id = :id AND e.availableSeats >= :seats")
+    int deductSeatsAtomic(@Param("id") Long id, @Param("seats") int seats);
+
+    @org.springframework.data.jpa.repository.Modifying(clearAutomatically = true)
+    @Query("UPDATE Event e SET e.availableSeats = e.availableSeats + :seats " +
+           "WHERE e.id = :id AND (e.availableSeats + :seats) <= e.totalSeats")
+    int restoreSeatsAtomic(@Param("id") Long id, @Param("seats") int seats);
 }

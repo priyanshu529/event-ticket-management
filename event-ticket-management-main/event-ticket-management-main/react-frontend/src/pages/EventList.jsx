@@ -1,11 +1,11 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import { 
   Search, 
   MapPin, 
   Calendar, 
   Ticket, 
-  X,
+  X, 
   Navigation
 } from 'lucide-react';
 import { getEvents } from '../services/api';
@@ -16,6 +16,7 @@ const POPULAR_HUBS = ['All Cities', 'Delhi', 'Noida', 'Mumbai', 'Goa', 'Bengalur
 const CATEGORIES = ['All Genres', 'Concerts', 'Electronic', 'Jazz', 'Art', 'Comedy', 'Tech', 'Festival'];
 
 export default function EventList() {
+  const [searchParams, setSearchParams] = useSearchParams();
   const [events, setEvents] = useState([]);
   const [loading, setLoading] = useState(true);
   const [filters, setFilters] = useState({
@@ -27,6 +28,35 @@ export default function EventList() {
   const [selectedCategoryTab, setSelectedCategoryTab] = useState('All Genres');
   
   const { location, loading: locationLoading, detectLocation, getDistanceToEvent, setManualCity } = useUserLocation();
+
+  // Sync state from URL search parameters on navigation
+  useEffect(() => {
+    const categoryParam = searchParams.get('category') || '';
+    const cityParam = searchParams.get('city') || '';
+    const nameParam = searchParams.get('name') || searchParams.get('search') || '';
+
+    setFilters({
+      name: nameParam,
+      city: cityParam,
+      category: categoryParam
+    });
+
+    if (categoryParam) {
+      const matched = CATEGORIES.find(c => 
+        c.toLowerCase().includes(categoryParam.toLowerCase()) || 
+        categoryParam.toLowerCase().includes(c.toLowerCase())
+      );
+      setSelectedCategoryTab(matched || categoryParam);
+    } else {
+      setSelectedCategoryTab('All Genres');
+    }
+
+    if (cityParam) {
+      setSelectedCityTab(cityParam);
+    } else {
+      setSelectedCityTab('All Cities');
+    }
+  }, [searchParams]);
 
   const fetchEvents = useCallback(async () => {
     setLoading(true);
@@ -51,17 +81,15 @@ export default function EventList() {
 
   const handleCitySelect = (cityName) => {
     setSelectedCityTab(cityName);
-    if (cityName === 'All Cities') {
-      setFilters(prev => ({ ...prev, city: '' }));
-    } else {
-      setFilters(prev => ({ ...prev, city: cityName }));
-      setManualCity(cityName);
-    }
+    const newCity = cityName === 'All Cities' ? '' : cityName;
+    setFilters(prev => ({ ...prev, city: newCity }));
+    if (newCity) setManualCity(cityName);
   };
 
   const handleCategorySelect = (catName) => {
     setSelectedCategoryTab(catName);
-    setFilters(prev => ({ ...prev, category: catName === 'All Genres' ? '' : catName }));
+    const newCat = catName === 'All Genres' ? '' : catName;
+    setFilters(prev => ({ ...prev, category: newCat }));
   };
 
   const handleApplyDetectedCity = () => {
@@ -74,6 +102,7 @@ export default function EventList() {
   };
 
   const handleClearFilters = () => {
+    setSearchParams({});
     setFilters({ name: '', city: '', category: '' });
     setSelectedCityTab('All Cities');
     setSelectedCategoryTab('All Genres');

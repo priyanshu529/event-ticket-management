@@ -1,11 +1,21 @@
 import React, { useState, useEffect } from 'react';
 import { createRazorpayOrder, verifyRazorpayPayment } from '../services/api';
-import { ShieldCheck, Lock, CheckCircle2, AlertCircle, X, CreditCard } from 'lucide-react';
+import { ShieldCheck, Lock, CheckCircle2, AlertCircle, X, CreditCard, Clock } from 'lucide-react';
 import AlienLogo from './AlienLogo';
 
-export default function PaymentModal({ isOpen, onClose, amount, userId, onSuccess, eventName = 'Live Show Ticket' }) {
+export default function PaymentModal({ 
+  isOpen, 
+  onClose, 
+  amount, 
+  userId, 
+  onSuccess, 
+  eventName = 'Live Show Ticket',
+  bookingId,
+  expiresAt 
+}) {
   const [step, setStep] = useState('input'); // 'input' | 'processing' | 'success'
   const [error, setError] = useState('');
+  const [timeLeft, setTimeLeft] = useState(null);
 
   useEffect(() => {
     if (isOpen) {
@@ -20,15 +30,52 @@ export default function PaymentModal({ isOpen, onClose, amount, userId, onSucces
     }
   }, [isOpen]);
 
+  // Live countdown timer for the seat hold
+  useEffect(() => {
+    if (!isOpen || !expiresAt) return;
+
+    const calculateTimeLeft = () => {
+      const difference = new Date(expiresAt).getTime() - new Date().getTime();
+      return Math.max(0, Math.floor(difference / 1000));
+    };
+
+    setTimeLeft(calculateTimeLeft());
+
+    const timer = setInterval(() => {
+      const remaining = calculateTimeLeft();
+      setTimeLeft(remaining);
+      if (remaining <= 0) {
+        clearInterval(timer);
+        setError('Seat reservation window expired. Held seats have been released back to the pool.');
+      }
+    }, 1000);
+
+    return () => clearInterval(timer);
+  }, [isOpen, expiresAt]);
+
+  const formatTimer = (seconds) => {
+    if (seconds == null) return '--:--';
+    const m = Math.floor(seconds / 60).toString().padStart(2, '0');
+    const s = (seconds % 60).toString().padStart(2, '0');
+    return `${m}:${s}`;
+  };
+
   if (!isOpen) return null;
 
+  const isExpired = timeLeft !== null && timeLeft <= 0;
+
   const handlePayment = async () => {
+    if (isExpired) {
+      setError('Cannot pay for an expired reservation. Please close and re-select your passes.');
+      return;
+    }
+
     setStep('processing');
     setError('');
 
     try {
-      // 1. Create order on backend microservice
-      const response = await createRazorpayOrder({ userId, amount });
+      // 1. Create order on backend microservice tied directly to held bookingId
+      const response = await createRazorpayOrder({ userId, amount, bookingId });
       const orderData = response.data;
 
       // 2. Configure Razorpay modal
@@ -40,12 +87,13 @@ export default function PaymentModal({ isOpen, onClose, amount, userId, onSucces
         description: `Pass for ${eventName}`,
         order_id: orderData.orderId,
         handler: async function (paymentResponse) {
-          // 3. Verify Razorpay signature server-side
+          // 3. Verify Razorpay signature server-side (also confirms the booking in DB)
           try {
             await verifyRazorpayPayment({
               razorpayOrderId: paymentResponse.razorpay_order_id,
               razorpayPaymentId: paymentResponse.razorpay_payment_id,
               razorpaySignature: paymentResponse.razorpay_signature,
+              bookingId: bookingId
             });
             setStep('success');
             setTimeout(() => {
@@ -54,7 +102,8 @@ export default function PaymentModal({ isOpen, onClose, amount, userId, onSucces
           } catch (verifyErr) {
             console.error('Signature verify failed', verifyErr);
             setStep('input');
-            setError('Payment signature verification failed. Please check with support.');
+            const msg = verifyErr.response?.data?.error || verifyErr.response?.data?.message || 'Payment signature verification failed. Please check with support.';
+            setError(msg);
           }
         },
         prefill: {
@@ -91,7 +140,7 @@ export default function PaymentModal({ isOpen, onClose, amount, userId, onSucces
     } catch (err) {
       console.error('Payment initiation error', err);
       setStep('input');
-      setError(err.response?.data?.message || 'Failed to initiate secure checkout gateway. Please try again.');
+      setError(err.response?.data?.error || err.response?.data?.message || 'Failed to initiate secure checkout gateway. Please try again.');
     }
   };
 
@@ -117,6 +166,19 @@ export default function PaymentModal({ isOpen, onClose, amount, userId, onSucces
             <X size={18} />
           </button>
         </div>
+
+        {/* Seat Hold Countdown Banner */}
+        {expiresAt && !isExpired && (
+          <div className="mb-4 p-3 bg-[#ccff00]/10 border border-[#ccff00]/30 text-[#ccff00] text-xs font-mono flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Clock size={15} className="animate-spin" />
+              <span>Seats locked for you. Complete payment in:</span>
+            </div>
+            <span className="font-bold text-sm bg-black/60 px-2 py-0.5 border border-[#ccff00]/40">
+              {formatTimer(timeLeft)}
+            </span>
+          </div>
+        )}
 
         {error && (
           <div className="mb-4 p-3 bg-red-500/10 border border-red-500/30 text-red-400 text-xs font-mono flex items-center gap-2">
@@ -146,17 +208,18 @@ export default function PaymentModal({ isOpen, onClose, amount, userId, onSucces
               </div>
               <div className="p-3 bg-black/40 border border-white/5 flex items-center gap-2">
                 <ShieldCheck size={14} className="text-[#ccff00]" />
-                <span>Anti-Scalp Protected</span>
+                <span>Verified Pass Entry</span>
               </div>
             </div>
 
             {/* Action button */}
             <button
               onClick={handlePayment}
-              className="w-full py-4 bg-[#ccff00] text-black font-syne font-black text-sm uppercase tracking-widest hover:bg-white transition-all flex items-center justify-center gap-2 cursor-pointer shadow-lg hover:shadow-[#ccff00]/20"
+              disabled={isExpired}
+              className="w-full py-4 bg-[#ccff00] disabled:bg-gray-700 disabled:text-gray-400 disabled:cursor-not-allowed text-black font-syne font-black text-sm uppercase tracking-widest hover:bg-white transition-all flex items-center justify-center gap-2 cursor-pointer shadow-lg hover:shadow-[#ccff00]/20"
             >
               <CreditCard size={18} />
-              <span>PAY WITH RAZORPAY / UPI / CARD</span>
+              <span>{isExpired ? 'RESERVATION EXPIRED' : 'PAY WITH RAZORPAY / UPI / CARD'}</span>
             </button>
 
             <p className="text-[11px] font-mono text-gray-500 text-center">
@@ -186,7 +249,7 @@ export default function PaymentModal({ isOpen, onClose, amount, userId, onSucces
               PAYMENT VERIFIED!
             </h4>
             <p className="text-xs font-mono text-[#ccff00]">
-              Issuing your pass and reserving seats on backend...
+              Pass confirmed and saved to your vault!
             </p>
           </div>
         )}

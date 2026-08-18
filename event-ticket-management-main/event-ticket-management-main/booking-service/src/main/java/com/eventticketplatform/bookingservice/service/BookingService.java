@@ -5,6 +5,7 @@ import com.eventticketplatform.bookingservice.client.UserServiceClient;
 import com.eventticketplatform.bookingservice.dto.BookingRequestDto;
 import com.eventticketplatform.bookingservice.dto.BookingResponseDto;
 import com.eventticketplatform.bookingservice.dto.EventDto;
+import com.eventticketplatform.bookingservice.dto.UserDto;
 import com.eventticketplatform.bookingservice.entity.Booking;
 import com.eventticketplatform.bookingservice.entity.BookingStatus;
 import com.eventticketplatform.bookingservice.exception.ResourceNotFoundException;
@@ -27,35 +28,82 @@ public class BookingService {
     private final UserServiceClient userServiceClient;
 
     /**
-     * Creates a new booking atomically.
-     * Concurrency Safety: Invokes event-service which acquires a Pessimistic Write Lock
-     * on the event row. If multiple users attempt to book the last available ticket simultaneously,
-     * the database lock serializes the requests:
-     * - The first user to acquire the lock reserves the ticket.
-     * - The second user is rejected with a SOLD_OUT / NOT_ENOUGH_SEATS exception.
+     * Creates a new booking reservation atomically.
+     * Concurrency Safety: Invokes event-service which atomically deducts seats.
+     * If multiple users attempt to reserve the last available tickets simultaneously:
+     * - The first user reserves the seats and gets a 10-minute hold window (PENDING_PAYMENT).
+     * - Any competing user is rejected immediately with a SOLD_OUT / NOT_ENOUGH_SEATS exception.
      */
     @Transactional
     public BookingResponseDto createBooking(BookingRequestDto dto) {
         // 1. Validate user exists (will throw Feign 404 if user not found)
-        userServiceClient.getUserById(dto.getUserId());
+        UserDto user = userServiceClient.getUserById(dto.getUserId());
+
+        if (user != null && user.getRole() != null && "ORGANIZER".equalsIgnoreCase(user.getRole())) {
+            throw new IllegalArgumentException("Organizers cannot book tickets. Please use an attendee account.");
+        }
 
         if (dto.getQuantity() == null || dto.getQuantity() <= 0) {
             throw new IllegalArgumentException("Booking quantity must be at least 1.");
         }
 
-        // 2. Atomically check and deduct seats under exclusive database lock
+        // 2. Atomically check and deduct seats in event-service
         EventDto event = eventServiceClient.updateSeats(dto.getEventId(), -dto.getQuantity());
 
-        // 3. Persist confirmed booking
-        Booking booking = new Booking();
-        booking.setUserId(dto.getUserId());
-        booking.setEventId(dto.getEventId());
-        booking.setQuantity(dto.getQuantity());
-        booking.setTotalAmount(event.getPrice().multiply(BigDecimal.valueOf(dto.getQuantity())));
-        booking.setBookingDate(LocalDateTime.now());
-        booking.setStatus(BookingStatus.CONFIRMED);
+        try {
+            // 3. Persist reservation in PENDING_PAYMENT state with 10-minute expiry
+            Booking booking = new Booking();
+            booking.setUserId(dto.getUserId());
+            booking.setEventId(dto.getEventId());
+            booking.setQuantity(dto.getQuantity());
+            BigDecimal price = event.getPrice() != null ? event.getPrice() : BigDecimal.ZERO;
+            booking.setTotalAmount(price.multiply(BigDecimal.valueOf(dto.getQuantity())));
+            booking.setBookingDate(LocalDateTime.now());
+            booking.setStatus(BookingStatus.PENDING_PAYMENT);
+            booking.setExpiresAt(LocalDateTime.now().plusMinutes(10));
 
+            Booking saved = bookingRepository.save(booking);
+            return toResponseDto(saved, event);
+        } catch (Exception ex) {
+            // Compensating transaction: restore seats if booking persistence fails
+            try {
+                eventServiceClient.updateSeats(dto.getEventId(), dto.getQuantity());
+            } catch (Exception rollbackEx) {
+                // ignore
+            }
+            throw new IllegalStateException("Failed to create booking hold: " + ex.getMessage(), ex);
+        }
+    }
+
+    /**
+     * Confirms a held booking after payment is verified.
+     */
+    @Transactional
+    public BookingResponseDto confirmBooking(Long bookingId) {
+        Booking booking = bookingRepository.findById(bookingId)
+                .orElseThrow(() -> new ResourceNotFoundException("Booking not found: " + bookingId));
+
+        if (booking.getStatus() == BookingStatus.CONFIRMED) {
+            EventDto event = eventServiceClient.getEventById(booking.getEventId());
+            return toResponseDto(booking, event);
+        }
+
+        if (booking.getStatus() == BookingStatus.EXPIRED || booking.getStatus() == BookingStatus.CANCELLED) {
+            throw new IllegalStateException("Cannot confirm booking. It has already been " + booking.getStatus());
+        }
+
+        // Check if reservation expired
+        if (booking.getExpiresAt() != null && LocalDateTime.now().isAfter(booking.getExpiresAt())) {
+            booking.setStatus(BookingStatus.EXPIRED);
+            bookingRepository.save(booking);
+            // Restore seats back to available pool
+            eventServiceClient.updateSeats(booking.getEventId(), booking.getQuantity());
+            throw new IllegalStateException("Booking reservation has expired. Held seats have been released.");
+        }
+
+        booking.setStatus(BookingStatus.CONFIRMED);
         Booking saved = bookingRepository.save(booking);
+        EventDto event = eventServiceClient.getEventById(saved.getEventId());
         return toResponseDto(saved, event);
     }
 
@@ -106,6 +154,10 @@ public class BookingService {
             throw new IllegalArgumentException("Booking is already cancelled.");
         }
 
+        if (booking.getStatus() == BookingStatus.EXPIRED) {
+            throw new IllegalArgumentException("Booking has already expired.");
+        }
+
         // Restore seats atomically in event-service
         EventDto event = eventServiceClient.updateSeats(booking.getEventId(), booking.getQuantity());
 
@@ -119,13 +171,14 @@ public class BookingService {
         dto.setId(booking.getId());
         dto.setUserId(booking.getUserId());
         dto.setEventId(booking.getEventId());
-        dto.setEventName(event.getName());
-        dto.setEventVenue(event.getVenue());
-        dto.setEventCity(event.getCity());
-        dto.setEventDate(event.getEventDate());
+        dto.setEventName(event != null ? event.getName() : "Event #" + booking.getEventId());
+        dto.setEventVenue(event != null ? event.getVenue() : "");
+        dto.setEventCity(event != null ? event.getCity() : "");
+        dto.setEventDate(event != null ? event.getEventDate() : null);
         dto.setQuantity(booking.getQuantity());
         dto.setTotalAmount(booking.getTotalAmount());
         dto.setBookingDate(booking.getBookingDate());
+        dto.setExpiresAt(booking.getExpiresAt());
         dto.setStatus(booking.getStatus());
         return dto;
     }

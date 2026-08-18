@@ -1,32 +1,68 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
+import { getEvents } from '../services/api';
 import { 
   Sparkles, 
   Disc, 
   Activity, 
-  ShieldCheck, 
   Flame, 
   Music, 
   Zap, 
   Radio, 
-  ArrowUpRight 
+  ArrowUpRight,
+  ShieldCheck
 } from 'lucide-react';
 import AlienLogo from './AlienLogo';
 
-const CATEGORY_CAPSULES = [
-  { id: 'Music', name: 'Live Concerts', icon: Music, count: '14 Shows', color: '#ccff00', desc: 'Indie, Acoustic, Rock & Bands' },
-  { id: 'Electronic', name: 'Underground Club', icon: Disc, count: '28 Shows', color: '#00f0ff', desc: 'Techno, House & Warehouse Raves' },
-  { id: 'Jazz', name: 'Jazz & Brass', icon: Radio, count: '8 Shows', color: '#ffaa00', desc: 'Improv Sax, Keys & Soul Sessions' },
-  { id: 'Art', name: 'Art Exhibitions', icon: Sparkles, count: '12 Expos', color: '#ff007f', desc: 'Galleries, Light Sculpture & Popups' },
-  { id: 'Comedy', name: 'Standup Comedy', icon: Flame, count: '9 Nights', color: '#ff4d00', desc: 'Open Mics & Special Headliners' },
-  { id: 'Tech', name: 'Tech & Hackathons', icon: Zap, count: '6 Summits', color: '#7000ff', desc: 'Developer Meetups & Keynotes' }
+const CATEGORIES_CONFIG = [
+  { id: 'Concerts', filterQuery: 'Concerts', keywords: ['music', 'concert', 'band', 'acoustic', 'rock', 'live', 'show'], name: 'Live Concerts', icon: Music, color: '#ccff00', desc: 'Indie, Acoustic, Rock & Bands' },
+  { id: 'Electronic', filterQuery: 'Electronic', keywords: ['electronic', 'club', 'techno', 'house', 'rave', 'dj'], name: 'Underground Club', icon: Disc, color: '#00f0ff', desc: 'Techno, House & Raves' },
+  { id: 'Jazz', filterQuery: 'Jazz', keywords: ['jazz', 'soul', 'brass', 'blues'], name: 'Jazz & Brass', icon: Radio, color: '#ffaa00', desc: 'Improv Sax, Keys & Soul' },
+  { id: 'Art', filterQuery: 'Art', keywords: ['art', 'gallery', 'exhibit', 'sculpture', 'painting'], name: 'Art Exhibitions', icon: Sparkles, color: '#ff007f', desc: 'Galleries & Popups' },
+  { id: 'Comedy', filterQuery: 'Comedy', keywords: ['comedy', 'standup', 'comic', 'humor', 'open mic'], name: 'Standup Comedy', icon: Flame, color: '#ff4d00', desc: 'Open Mics & Headliners' },
+  { id: 'Tech', filterQuery: 'Tech', keywords: ['tech', 'hack', 'summit', 'developer', 'code', 'conference'], name: 'Tech & Hackathons', icon: Zap, color: '#7000ff', desc: 'Meetups & Keynotes' }
 ];
 
 export default function ExperienceRadarDeck() {
   const navigate = useNavigate();
+  const [categoryCounts, setCategoryCounts] = useState({});
 
-  const handleSelectCategory = (catId) => {
-    navigate(`/events?category=${catId}`);
+  useEffect(() => {
+    const fetchCategoryCounts = async () => {
+      try {
+        const response = await getEvents({ size: 100 });
+        const events = response.data?.content || response.data || [];
+        
+        const counts = {};
+        events.forEach(evt => {
+          const catText = (evt.category || '').toLowerCase();
+          const nameText = (evt.name || '').toLowerCase();
+          
+          CATEGORIES_CONFIG.forEach(cfg => {
+            const isMatch = cfg.keywords.some(kw => catText.includes(kw) || nameText.includes(kw)) ||
+                            catText.includes(cfg.id.toLowerCase());
+            if (isMatch) {
+              counts[cfg.id] = (counts[cfg.id] || 0) + 1;
+            }
+          });
+        });
+        setCategoryCounts(counts);
+      } catch (err) {
+        console.warn('Radar category count sync error', err);
+      }
+    };
+
+    fetchCategoryCounts();
+  }, []);
+
+  const handleSelectCategory = (cat) => {
+    navigate(`/events?category=${encodeURIComponent(cat.filterQuery)}`);
+  };
+
+  const getDisplayCount = (catId) => {
+    const count = categoryCounts[catId] || 0;
+    if (count === 1) return '1 Show';
+    return `${count} Shows`;
   };
 
   return (
@@ -62,7 +98,7 @@ export default function ExperienceRadarDeck() {
             <span className="hidden sm:inline text-white/20">|</span>
             <div className="flex items-center gap-1.5">
               <ShieldCheck size={13} className="text-[#00f0ff]" />
-              <span>ANTI-SCALPING VERIFIED</span>
+              <span>INSTANT PASS DELIVERY</span>
             </div>
             <span className="hidden sm:inline text-white/20">|</span>
             <div className="flex items-center gap-1.5">
@@ -86,13 +122,14 @@ export default function ExperienceRadarDeck() {
           </div>
 
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
-            {CATEGORY_CAPSULES.map((cat) => {
+            {CATEGORIES_CONFIG.map((cat) => {
               const Icon = cat.icon;
+              const countLabel = getDisplayCount(cat.id);
 
               return (
                 <button
                   key={cat.id}
-                  onClick={() => handleSelectCategory(cat.id)}
+                  onClick={() => handleSelectCategory(cat)}
                   className="group relative p-4 bg-[#11121c] hover:bg-[#161824] border border-white/10 hover:border-[#ccff00] transition-all duration-300 text-left flex flex-col justify-between h-36 cursor-pointer overflow-hidden"
                 >
                   {/* Subtle top indicator line on hover */}
@@ -109,7 +146,7 @@ export default function ExperienceRadarDeck() {
                       <Icon size={16} />
                     </div>
                     <span className="text-[10px] font-mono text-gray-400 group-hover:text-[#ccff00] transition-colors">
-                      {cat.count}
+                      {countLabel}
                     </span>
                   </div>
 

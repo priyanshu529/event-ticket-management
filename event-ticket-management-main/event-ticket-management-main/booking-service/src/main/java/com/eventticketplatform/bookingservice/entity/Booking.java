@@ -34,6 +34,9 @@ public class Booking {
     private LocalDateTime bookingDate = LocalDateTime.now();
 
     @Enumerated(EnumType.STRING)
-    @Column(nullable = false)
-    private BookingStatus status = BookingStatus.CONFIRMED;
+    @Column(name = "status", nullable = false, length = 50)
+    private BookingStatus status = BookingStatus.PENDING_PAYMENT;
+
+    @Column
+    private LocalDateTime expiresAt;
 }

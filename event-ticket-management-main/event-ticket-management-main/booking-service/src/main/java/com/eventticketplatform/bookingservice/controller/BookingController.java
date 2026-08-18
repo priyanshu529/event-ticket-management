@@ -43,8 +43,18 @@ public class BookingController {
         return ResponseEntity.ok(bookingService.getBookingById(id));
     }
 
+    @PutMapping("/{id}/confirm")
+    public ResponseEntity<BookingResponseDto> confirmBooking(@PathVariable Long id) {
+        return ResponseEntity.ok(bookingService.confirmBooking(id));
+    }
+
+    @PutMapping("/{id}/cancel")
+    public ResponseEntity<BookingResponseDto> cancelBookingPut(@PathVariable Long id) {
+        return ResponseEntity.ok(bookingService.cancelBooking(id));
+    }
+
     @DeleteMapping("/{id}/cancel")
-    public ResponseEntity<BookingResponseDto> cancelBooking(@PathVariable Long id) {
+    public ResponseEntity<BookingResponseDto> cancelBookingDelete(@PathVariable Long id) {
         return ResponseEntity.ok(bookingService.cancelBooking(id));
     }
 }

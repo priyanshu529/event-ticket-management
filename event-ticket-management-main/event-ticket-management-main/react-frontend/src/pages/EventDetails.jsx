@@ -2,7 +2,8 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { 
   getEventById, 
-  createBooking 
+  createBooking,
+  cancelBooking 
 } from '../services/api';
 import { useAuth } from '../context/AuthContext';
 import PaymentModal from '../components/PaymentModal';
@@ -15,15 +16,18 @@ import {
   AlertCircle,
   Plus,
   Minus,
-  CheckCircle2
+  CheckCircle2,
+  Loader2
 } from 'lucide-react';
 
 export default function EventDetails() {
   const { id } = useParams();
   const [event, setEvent] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [reserving, setReserving] = useState(false);
   const [quantity, setQuantity] = useState(1);
   const [error, setError] = useState('');
+  const [pendingBooking, setPendingBooking] = useState(null);
   const [isPaymentOpen, setIsPaymentOpen] = useState(false);
   const { user } = useAuth();
   const navigate = useNavigate();
@@ -45,30 +49,74 @@ export default function EventDetails() {
     fetchEvent();
   }, [fetchEvent]);
 
-  const handleBook = () => {
+  const isOrganizer = user && (user.role === 'ORGANIZER' || user.role === 'organizer');
+
+  const handleBook = async () => {
     if (!user) {
       navigate('/login');
       return;
     }
-    setIsPaymentOpen(true);
-  };
 
-  const processBookingBackend = async () => {
+    if (isOrganizer) {
+      setError('Organizers cannot book passes. Please sign in with an Attendee account.');
+      return;
+    }
+
+    setError('');
+    setReserving(true);
+
     try {
-      await createBooking({
+      // 1. Temporarily hold and reserve the seats in Event Service
+      const response = await createBooking({
         userId: user.id,
         eventId: event.id,
         quantity: quantity
       });
-      setIsPaymentOpen(false);
-      navigate('/bookings');
+
+      setPendingBooking(response.data);
+      setIsPaymentOpen(true);
     } catch (err) {
-      const errorMsg = err.response?.data?.error || err.response?.data?.message || 'Booking failed on backend.';
+      let errorMsg = 'Unable to reserve seats. Please try again.';
+      const resData = err.response?.data;
+      
+      if (resData) {
+        if (typeof resData === 'string') {
+          errorMsg = resData;
+        } else if (resData.error && resData.error !== 'Internal Server Error') {
+          errorMsg = resData.error;
+        } else if (resData.message) {
+          errorMsg = resData.message;
+        } else if (resData.error) {
+          errorMsg = resData.error;
+        }
+      }
+
       setError(errorMsg);
-      setIsPaymentOpen(false);
-      // Re-fetch event details to update available seats immediately
-      fetchEventDetails();
+      // Refresh event to display current seat availability
+      fetchEvent();
+    } finally {
+      setReserving(false);
     }
+  };
+
+  const handleClosePayment = async () => {
+    setIsPaymentOpen(false);
+    if (pendingBooking) {
+      try {
+        // Release the seat hold immediately if user cancels checkout
+        await cancelBooking(pendingBooking.id);
+      } catch (err) {
+        console.warn('Seat release on close error', err);
+      }
+      setPendingBooking(null);
+      fetchEvent();
+    }
+  };
+
+  const onPaymentSuccess = () => {
+    setIsPaymentOpen(false);
+    setPendingBooking(null);
+    navigate('/bookings');
   };
 
   if (loading) {
@@ -199,7 +247,7 @@ export default function EventDetails() {
                 </li>
                 <li className="flex items-center gap-2">
                   <CheckCircle2 size={13} className="text-[#ccff00]" />
-                  <span>Anti-scalp token verification at door</span>
+                  <span>Instant verified cryptographic door admission</span>
                 </li>
                 <li className="flex items-center gap-2">
                   <CheckCircle2 size={13} className="text-[#ccff00]" />
@@ -267,7 +315,7 @@ export default function EventDetails() {
                   <span>₹{totalPrice.toFixed(2)}</span>
                 </div>
                 <div className="flex justify-between text-gray-400">
-                  <span>Scalper Protection Fee</span>
+                  <span>Platform Booking Fee</span>
                   <span className="text-[#ccff00]">₹0.00 (FREE)</span>
                 </div>
                 <div className="pt-2 border-t border-white/10 flex justify-between text-base font-bold text-white">
@@ -276,15 +324,40 @@ export default function EventDetails() {
                 </div>
               </div>
 
+              {/* Error Display */}
+              {error && (
+                <div className="p-3 bg-red-500/10 border border-red-500/30 text-red-400 text-xs font-mono flex items-center gap-2">
+                  <AlertCircle size={16} className="shrink-0" />
+                  <span>{error}</span>
+                </div>
+              )}
+
               {/* Action Button */}
               <button
                 onClick={handleBook}
-                disabled={isSoldOut || event.availableSeats < quantity}
+                disabled={isSoldOut || event.availableSeats < quantity || reserving || isOrganizer}
                 className="w-full py-4 bg-[#ccff00] hover:bg-white text-black font-syne font-black text-sm uppercase tracking-widest transition-all duration-200 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer flex items-center justify-center gap-2"
               >
-                <Ticket size={18} />
-                <span>{isSoldOut ? 'SHOW IS SOLD OUT' : 'SECURE PASSES NOW'}</span>
+                {reserving ? (
+                  <>
+                    <Loader2 size={18} className="animate-spin" />
+                    <span>LOCKING SEATS...</span>
+                  </>
+                ) : isOrganizer ? (
+                  <span>ORGANIZERS CANNOT BOOK PASSES</span>
+                ) : (
+                  <>
+                    <Ticket size={18} />
+                    <span>{isSoldOut ? 'SHOW IS SOLD OUT' : 'SECURE PASSES NOW'}</span>
+                  </>
+                )}
               </button>
+
+              {isOrganizer && (
+                <p className="text-[11px] font-mono text-center text-yellow-400/90">
+                  * You are signed in with an Organizer account. Only attendees can purchase tickets.
+                </p>
+              )}
 
               {!user && (
                 <p className="text-[11px] font-mono text-center text-gray-400">
@@ -301,11 +374,13 @@ export default function EventDetails() {
       {/* Razorpay Payment Modal */}
       <PaymentModal 
         isOpen={isPaymentOpen} 
-        onClose={() => setIsPaymentOpen(false)} 
-        amount={totalPrice} 
+        onClose={handleClosePayment} 
+        amount={pendingBooking ? pendingBooking.totalAmount : totalPrice} 
         userId={user?.id}
+        bookingId={pendingBooking?.id}
+        expiresAt={pendingBooking?.expiresAt}
         eventName={event.name}
-        onSuccess={processBookingBackend} 
+        onSuccess={onPaymentSuccess} 
       />
 
     </div>
